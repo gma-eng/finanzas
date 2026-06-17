@@ -201,13 +201,30 @@ function renderHome(){
         </div>`).join("");
   } else {
     listHTML = rends.length===0
-      ? `<div class="empty">${ICONS.receipt}<p>Sin rendiciones.<br>Toca + para entregar un adelanto.</p></div>`
+      ? `<div class="empty">${ICONS.receipt}<p>Sin rendiciones.<br>Toca + para crear una.</p></div>`
       : rends.map(r=>{
-        const spent=(r.items||[]).reduce((s,i)=>s+(+i.amount),0); const diff=(+r.adelanto)-spent;
+        const spent=(r.items||[]).reduce((s,i)=>s+(+i.amount),0);
+        if((r.tipo||"adelanto")==="reembolso"){
+          const pagado=(r.pagos||[]).reduce((s,p)=>s+(+p.amount),0);
+          const falta=spent-pagado;
+          return `<div class="row clickable" onclick="openRend('${r.id}')">
+            <div class="ibox" style="background:#FCEEDB;color:#9A6A12">${ICONS.receipt}</div>
+            <div class="row-mid">
+              <div class="row-title">${esc(r.persona||"Sin persona")} <span class="mini-tag">Reembolso</span></div>
+              <div class="row-sub">${esc(r.concepto||"Gastos a devolver")} · ${r.fecha}</div>
+              <div class="rend-meta"><span>Gastos ${num(spent)}</span><span>Pagado ${num(pagado)}</span></div>
+            </div>
+            <div class="rend-right">
+              <span class="lab">${falta>0?"Le debes":"Saldado"}</span>
+              <span class="v ${falta>0?"red":"green"}">${num(Math.abs(falta))}</span>
+            </div>
+          </div>`;
+        }
+        const diff=(+r.adelanto)-spent;
         return `<div class="row clickable" onclick="openRend('${r.id}')">
           <div class="ibox" style="background:#EEEDFE;color:#3C3489">${ICONS.receipt}</div>
           <div class="row-mid">
-            <div class="row-title">${esc(r.persona||"Sin persona")}</div>
+            <div class="row-title">${esc(r.persona||"Sin persona")} <span class="mini-tag">Adelanto</span></div>
             <div class="row-sub">${esc(r.concepto||"Adelanto")} · ${r.fecha}</div>
             <div class="rend-meta"><span>Entregado ${num(r.adelanto)}</span><span>Gastado ${num(spent)}</span></div>
           </div>
@@ -257,9 +274,10 @@ function renderHome(){
 
 function renderRendition(r){
   const p=activeProfile();
-  const items=r.items||[]; const spent=items.reduce((s,i)=>s+(+i.amount),0); const diff=(+r.adelanto)-spent;
+  const tipo=r.tipo||"adelanto";
+  const items=r.items||[]; const spent=items.reduce((s,i)=>s+(+i.amount),0);
   const itemsHTML = items.length===0
-    ? `<div class="empty">${ICONS.receipt}<p>Aún no se rinden gastos.</p></div>`
+    ? `<div class="empty">${ICONS.receipt}<p>Aún no hay gastos.</p></div>`
     : items.map(i=>`
       <div class="row">
         <div class="ibox" style="background:#FAECE7;color:#993C1D">${ICONS.down}</div>
@@ -268,16 +286,36 @@ function renderRendition(r){
         <button class="del-btn" onclick="delItem('${r.id}','${i.id}')">${ICONS.trash}</button>
       </div>`).join("");
 
-  app.innerHTML = `
-    <header style="background:${p.color};padding-bottom:24px">
-      <div class="hdr-top"><button class="icon-btn" onclick="closeRend()">${ICONS.back}</button><button class="icon-btn" onclick="delRend('${r.id}')">${ICONS.trash}</button></div>
-      <div style="margin-top:14px">
-        <div style="font-size:12px;opacity:.85">Rendición de</div>
-        <div style="font-size:22px;font-weight:600">${esc(r.persona||"Sin persona")}</div>
-        <div style="font-size:13px;opacity:.85;margin-top:2px">${esc(r.concepto||"Adelanto")} · ${r.fecha}</div>
-      </div>
-    </header>
-    <div class="body" style="margin-top:-10px">
+  let resumenHTML, extraSección="";
+
+  if(tipo==="reembolso"){
+    const pagos=r.pagos||[]; const pagado=pagos.reduce((s,x)=>s+(+x.amount),0);
+    const falta=spent-pagado;
+    resumenHTML = `
+      <div class="card">
+        <div class="line"><span>Total de gastos</span><span>${fmt(spent)}</span></div>
+        <div class="line"><span>Ya pagado a la persona</span><span>${fmt(pagado)}</span></div>
+        <div class="divider"></div>
+        <div class="result">
+          <span class="t ${falta>0?"red":"green"}">${falta>0?"Te falta devolver":"Reembolso saldado"}</span>
+          <span class="a ${falta>0?"red":"green"}">${fmt(Math.abs(falta))}</span>
+        </div>
+      </div>`;
+    const pagosHTML = pagos.length===0
+      ? `<div class="empty">${ICONS.wallet}<p>Aún no registras pagos.</p></div>`
+      : pagos.map(x=>`
+        <div class="row">
+          <div class="ibox" style="background:#E1F5EE;color:#0F6E56">${ICONS.up}</div>
+          <div class="row-mid"><div class="row-title">Pago</div><div class="row-sub">${x.note?esc(x.note)+" · ":""}${x.date}</div></div>
+          <div class="row-amt green">${num(x.amount)}</div>
+          <button class="del-btn" onclick="delPago('${r.id}','${x.id}')">${ICONS.trash}</button>
+        </div>`).join("");
+    extraSección = `
+      <div class="sec-head" style="margin-top:18px"><span class="t">Pagos hechos a la persona</span><button class="add-sm" onclick="openPagoForm('${r.id}')">${ICONS.plus} Pago</button></div>
+      <div class="list">${pagosHTML}</div>`;
+  } else {
+    const diff=(+r.adelanto)-spent;
+    resumenHTML = `
       <div class="card">
         <div class="line"><span>Monto entregado</span><span>${fmt(r.adelanto)}</span></div>
         <div class="line"><span>Total gastado (rendido)</span><span>${fmt(spent)}</span></div>
@@ -286,9 +324,26 @@ function renderRendition(r){
           <span class="t ${diff>=0?"green":"red"}">${diff>=0?"Saldo a devolver a caja":"Saldo a reembolsar a la persona"}</span>
           <span class="a ${diff>=0?"green":"red"}">${fmt(Math.abs(diff))}</span>
         </div>
+      </div>`;
+  }
+
+  const tagTipo = tipo==="reembolso" ? "Reembolso" : "Adelanto";
+  const subt = tipo==="reembolso" ? (r.concepto||"Gastos a devolver") : (r.concepto||"Adelanto");
+
+  app.innerHTML = `
+    <header style="background:${p.color};padding-bottom:24px">
+      <div class="hdr-top"><button class="icon-btn" onclick="closeRend()">${ICONS.back}</button><button class="icon-btn" onclick="delRend('${r.id}')">${ICONS.trash}</button></div>
+      <div style="margin-top:14px">
+        <div style="font-size:12px;opacity:.85">${tagTipo} de</div>
+        <div style="font-size:22px;font-weight:600">${esc(r.persona||"Sin persona")}</div>
+        <div style="font-size:13px;opacity:.85;margin-top:2px">${esc(subt)} · ${r.fecha}</div>
       </div>
-      <div class="sec-head"><span class="t">Gastos rendidos</span><button class="add-sm" onclick="openItemForm('${r.id}')">${ICONS.plus} Agregar</button></div>
+    </header>
+    <div class="body" style="margin-top:-10px">
+      ${resumenHTML}
+      <div class="sec-head"><span class="t">${tipo==="reembolso"?"Gastos de la persona":"Gastos rendidos"}</span><button class="add-sm" onclick="openItemForm('${r.id}')">${ICONS.plus} Agregar</button></div>
       <div class="list">${itemsHTML}</div>
+      ${extraSección}
     </div>`;
 }
 
@@ -350,22 +405,42 @@ function openRendForm(){
   const p=activeProfile();
   modal(`
     <div class="sheet-head"><h2>Nueva rendición</h2><button class="close-btn" onclick="closeModal()">${ICONS.x}</button></div>
-    <p class="note">Entrega un adelanto a una persona. Luego registras los gastos rendidos y la app calcula la devolución o el reembolso.</p>
+    <p class="note">Elige el tipo según cómo se mueve el dinero.</p>
+    <div class="seg" style="flex-direction:column;gap:8px">
+      <button id="ta" class="ingreso on" style="text-transform:none;text-align:left;padding:12px 14px" onclick="segRend('adelanto')">
+        <strong>Entrego dinero (adelanto)</strong><br><span style="font-weight:400;font-size:12px">Doy un monto, la persona gasta y rinde. Devuelve o le reembolso.</span>
+      </button>
+      <button id="tr" class="gasto" style="text-transform:none;text-align:left;padding:12px 14px" onclick="segRend('reembolso')">
+        <strong>Me pasan gastos (reembolso)</strong><br><span style="font-weight:400;font-size:12px">La persona ya gastó de su bolsillo. Yo le devuelvo el total.</span>
+      </button>
+    </div>
     <div class="field"><label>Persona (nombre y apellido)</label><input id="rperson" list="people" placeholder="Ej. Juan Pérez">${dataList()}</div>
-    <div class="field"><label>Monto entregado (S/)</label><input id="radv" type="number" inputmode="decimal" placeholder="0.00"></div>
+    <div class="field" id="advfield"><label>Monto entregado (S/)</label><input id="radv" type="number" inputmode="decimal" placeholder="0.00"></div>
     <div class="field"><label>Concepto</label><input id="rconcept" placeholder="Ej. Compra de insumos"></div>
     <div class="field"><label>Fecha</label><input id="rdate" type="date" value="${todayISO()}"></div>
     <button class="primary" style="background:${p.color}" id="rbtn" onclick="saveRend()">Crear rendición</button>`);
+  window._rendType="adelanto";
+}
+function segRend(t){
+  window._rendType=t;
+  document.getElementById("ta").className="ingreso"+(t==="adelanto"?" on":"");
+  document.getElementById("tr").className="gasto"+(t==="reembolso"?" on":"");
+  document.getElementById("advfield").style.display = t==="reembolso" ? "none" : "block";
 }
 async function saveRend(){
+  const tipo=window._rendType||"adelanto";
   const person=document.getElementById("rperson").value.trim();
-  const adv=parseFloat(document.getElementById("radv").value);
-  if(!person||!adv||adv<=0) return;
+  if(!person){ document.getElementById("rperson").focus(); return; }
+  let adv=0;
+  if(tipo==="adelanto"){
+    adv=parseFloat(document.getElementById("radv").value);
+    if(!adv||adv<=0){ document.getElementById("radv").focus(); return; }
+  }
   const btn=document.getElementById("rbtn"); btn.disabled=true; btn.textContent="Creando…";
   const { data, error } = await sb.from("rendiciones").insert({
-    perfil_id: state.active, persona: person, adelanto: adv,
+    perfil_id: state.active, tipo, persona: person, adelanto: adv,
     concepto: document.getElementById("rconcept").value.trim(), fecha: document.getElementById("rdate").value,
-    items: [], creado_por: state.user.id,
+    items: [], pagos: [], creado_por: state.user.id,
   }).select().single();
   if(error){ btn.disabled=false; btn.textContent="Crear rendición"; alert("No se pudo crear: "+error.message); return; }
   closeModal(); await loadProfileData(); state.openRend=data.id; render();
@@ -404,6 +479,37 @@ async function delItem(rid,iid){
   const r=state.rends.find(x=>x.id===rid); if(!r) return;
   const items=(r.items||[]).filter(i=>i.id!==iid);
   await sb.from("rendiciones").update({ items }).eq("id", rid);
+  await loadProfileData(); render();
+}
+
+/* ---- Pagos a la persona (solo reembolso) ---- */
+function openPagoForm(rid){
+  const p=activeProfile();
+  modal(`
+    <div class="sheet-head"><h2>Registrar pago</h2><button class="close-btn" onclick="closeModal()">${ICONS.x}</button></div>
+    <p class="note">Monto que le entregaste a la persona como parte de la devolución.</p>
+    <div class="field"><label>Monto (S/)</label><input id="pamt" type="number" inputmode="decimal" placeholder="0.00"></div>
+    <div class="field"><label>Fecha</label><input id="pdate" type="date" value="${todayISO()}"></div>
+    <div class="field"><label>Nota (opcional)</label><input id="pnote" placeholder="Ej. Transferencia, efectivo…"></div>
+    <button class="primary" style="background:${p.color}" id="pbtn" onclick="savePago('${rid}')">Registrar pago</button>`);
+}
+async function savePago(rid){
+  const amt=parseFloat(document.getElementById("pamt").value);
+  if(!amt||amt<=0) return;
+  const r=state.rends.find(x=>x.id===rid); if(!r) return;
+  const btn=document.getElementById("pbtn"); btn.disabled=true; btn.textContent="Registrando…";
+  const pagos=[...(r.pagos||[]), {
+    id: Date.now().toString(36)+Math.random().toString(36).slice(2,7),
+    amount: amt, date: document.getElementById("pdate").value, note: document.getElementById("pnote").value.trim(),
+  }];
+  const { error } = await sb.from("rendiciones").update({ pagos }).eq("id", rid);
+  if(error){ btn.disabled=false; btn.textContent="Registrar pago"; alert("No se pudo registrar: "+error.message); return; }
+  closeModal(); await loadProfileData(); render();
+}
+async function delPago(rid,pid){
+  const r=state.rends.find(x=>x.id===rid); if(!r) return;
+  const pagos=(r.pagos||[]).filter(x=>x.id!==pid);
+  await sb.from("rendiciones").update({ pagos }).eq("id", rid);
   await loadProfileData(); render();
 }
 
