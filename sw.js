@@ -2,7 +2,7 @@
    Los DATOS siempre van a Supabase por red; aquí solo cacheamos la
    "cáscara" de la app (HTML/CSS/JS/íconos). */
 
-const CACHE = "finanzas-v2";
+const CACHE = "finanzas-v3";
 const ASSETS = [
   "./",
   "./index.html",

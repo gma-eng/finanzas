@@ -25,6 +25,10 @@ const CATS = {
 };
 const PALETTE = ["#378ADD","#1D9E75","#D85A30","#7F77DD","#D4537E","#BA7517"];
 
+// UID del administrador (definido también en la base de datos por seguridad).
+// Esto solo controla lo que se MUESTRA; el acceso real lo garantiza RLS.
+const ADMIN_UID = "6b5851aa-7199-40f9-ba2f-1d77e0f7525f";
+
 const FMT = new Intl.NumberFormat("es-PE",{style:"currency",currency:"PEN",minimumFractionDigits:2});
 const fmt = n => FMT.format(Math.round(((+n)+Number.EPSILON)*100)/100);
 const num = n => fmt(n).replace("PEN","").trim();
@@ -160,7 +164,8 @@ async function onRemoteChange(kind, payload){
 
 /* ============================ DERIVADOS ============================ */
 function activeProfile(){ return state.profiles.find(p=>p.id===state.active)||state.profiles[0]||{nombre:"—",color:"#378ADD"}; }
-function isOwner(p){ return p && p.owner_id===state.user.id; }
+function isAdmin(){ return state.user && state.user.id===ADMIN_UID; }
+function isOwner(p){ return p && (p.owner_id===state.user.id || isAdmin()); }
 function peopleList(){
   const s=new Set();
   state.tx.forEach(t=>t.persona&&s.add(t.persona));
@@ -515,18 +520,23 @@ async function delPago(rid,pid){
 
 /* ============================ PERFILES ============================= */
 function openProfiles(){
-  const rows=state.profiles.map(p=>`
+  const admin = isAdmin();
+  const rows=state.profiles.map(p=>{
+    const ajeno = admin && p.owner_id!==state.user.id;
+    return `
     <div class="prof-row ${p.id===state.active?"on":""}" onclick="pickProfile('${p.id}')">
       <div class="dot" style="background:${p.color}"></div>
       <span class="prof-name" style="font-weight:${p.id===state.active?600:400}">
         ${esc(p.nombre)}
         ${p.compartido?`<span class="mini-tag">Compartido</span>`:`<span class="mini-tag">Privado</span>`}
+        ${ajeno?`<span class="mini-tag" style="background:#EEEDFE;color:#3C3489">de otro usuario</span>`:""}
       </span>
-      ${isOwner(p)?`<button class="manage-link" onclick="event.stopPropagation();openManage('${p.id}')">${p.compartido?"Miembros":""}</button>`:``}
+      ${(isOwner(p)&&p.compartido)?`<button class="manage-link" onclick="event.stopPropagation();openManage('${p.id}')">Miembros</button>`:``}
       ${isOwner(p)&&state.profiles.length>1?`<button class="del-btn" onclick="event.stopPropagation();removeProfile('${p.id}')">${ICONS.trash}</button>`:""}
-    </div>`).join("");
+    </div>`;}).join("");
   modal(`
-    <div class="sheet-head"><h2>Mis perfiles</h2><button class="close-btn" onclick="closeModal()">${ICONS.x}</button></div>
+    <div class="sheet-head"><h2>${admin?"Perfiles (Administrador)":"Mis perfiles"}</h2><button class="close-btn" onclick="closeModal()">${ICONS.x}</button></div>
+    ${admin?`<p class="hint" style="margin:-6px 0 14px">Como administrador ves todos los perfiles de todos los usuarios y puedes gestionar sus miembros.</p>`:""}
     <div style="margin-bottom:16px">${rows}</div>
     <div class="field"><label>Nuevo perfil</label><input id="newprof" placeholder="Ej. Emprendimiento 1"></div>
     <label class="check-row" onclick="event.stopPropagation()">
@@ -534,7 +544,7 @@ function openProfiles(){
       <span><span class="ct">Compartido con la familia</span><br><span class="cs">Otros miembros podrán verlo y editarlo</span></span>
     </label>
     <button class="primary" style="background:#1a1a1a" onclick="addProfile()">Crear perfil</button>
-    <p class="hint">Los perfiles privados solo los ves tú. En los compartidos, agrega miembros con el botón "Miembros".</p>`);
+    <p class="hint">Los perfiles privados solo los ves tú (y el administrador). En los compartidos, agrega miembros con el botón "Miembros".</p>`);
 }
 async function pickProfile(id){ state.active=id; closeModal(); await loadProfileData(); render(); }
 
@@ -609,6 +619,7 @@ function openAccount(){
     <div class="card">
       <div class="line"><span>Nombre</span><span>${esc(name)}</span></div>
       <div class="line"><span>Correo</span><span>${esc(email)}</span></div>
+      <div class="line"><span>Rol</span><span>${isAdmin()?"Administrador":"Usuario"}</span></div>
     </div>
     <button class="primary" style="background:#993C1D" onclick="doLogout()">Cerrar sesión</button>`);
 }
